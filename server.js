@@ -1,28 +1,59 @@
 const express = require('express');
 const app = express();
-git a
-app.set('port', process.env.PORT || 3000);
+const Nightmare = require('nightmare');
+const nightmare = Nightmare({ show: false });
+
+app.set('port', process.env.PORT || 3001);
 app.locals.title = 'Cody\'s Live Rides';
 
-app.locals.rides = [
-  {id: 1234, date: "6/13/2020", day: "Saturday", length: "30", title: "90s Pop", startTime: "7:00 am", countMeIn: false},
-  {id: 2345, date: "6/14/2020", day: "Sunday", length: "45", title: "Interval & Arms Ride", startTime: "4:00 pm", countMeIn: false}
-];
+let codyRides;
 
 app.get('/', (request, response) => {
   response.send('Oh hey Boo');
 });
 
 app.get('/api/v1/rides', (request, response) => {
-  const rides = app.locals.rides;
 
-  response.json({ rides });
+  function findCodyRides() {
+    nightmare
+      .goto('https://members.onepeloton.com/schedule/cycling')
+      .wait(3000)
+      .evaluate(function() {
+        var classCards = document.querySelectorAll('li.sc-guDjWT.fOmymg');
+        var list = [].slice.call(classCards);
+
+        var codyClasses = list.filter(function(cycleClass) {
+          var instructorText = cycleClass.firstChild.lastChild.lastChild.innerText;
+          var instructorName = instructorText.split("·")[0];
+
+          return instructorName === "CODY RIGSBY";
+        });
+
+        return codyClasses.map(function(codyClass) {
+          var description = codyClass.firstChild.lastChild.firstChild.innerText;
+          var time = codyClass.firstChild.firstChild.firstChild.innerText;
+          var day = codyClass.parentNode.parentNode.firstChild.innerText;
+          var id = `${day} ${time}`;
+
+          return {id, description, time, day, countMeIn: false}
+        });
+      })
+      .end()
+      .then(function(rides) {
+        codyRides = rides;
+        response.json(rides);
+      })
+      .catch(function(error) {
+        console.error('Search failed:', error);
+      });
+  }
+  findCodyRides();
 });
 
-app.post('/api/v1/rides', (request, response) => {
+app.post('/api/v1/rides/:id', (request, response) => {
   const { toggleRide } = request.body;
 
-  const match = app.locals.rides.find(ride => {
+  const match = codyRides.find(ride => {
     return ride.id === toggleRide.id;
   });
 
